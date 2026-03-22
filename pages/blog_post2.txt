@@ -1,0 +1,6 @@
+TITLE: Blog Post 2
+DESCRIPTION: Industry insights and trends.
+LINKS:
+blog
+blog_post1
+blog_post3

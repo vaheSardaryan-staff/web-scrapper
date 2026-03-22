@@ -1,0 +1,6 @@
+TITLE: FAQ
+DESCRIPTION: Frequently asked questions.
+LINKS:
+contact
+home
+pricing

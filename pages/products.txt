@@ -1,0 +1,7 @@
+TITLE: Products
+DESCRIPTION: Our product catalog.
+LINKS:
+home
+product_alpha
+product_beta
+pricing

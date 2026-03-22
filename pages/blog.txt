@@ -1,0 +1,7 @@
+TITLE: Blog
+DESCRIPTION: Our latest articles and updates.
+LINKS:
+home
+blog_post1
+blog_post2
+blog_post3

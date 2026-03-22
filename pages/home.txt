@@ -1,0 +1,7 @@
+TITLE: Home Page
+DESCRIPTION: The main entry point of the web.
+LINKS:
+about
+blog
+products
+contact

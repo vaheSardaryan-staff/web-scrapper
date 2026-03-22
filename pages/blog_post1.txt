@@ -1,0 +1,6 @@
+TITLE: Blog Post 1
+DESCRIPTION: Deep dive into our technology.
+LINKS:
+blog
+blog_post2
+products

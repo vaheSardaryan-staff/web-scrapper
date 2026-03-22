@@ -1,0 +1,6 @@
+TITLE: Blog Post 3
+DESCRIPTION: Customer success stories.
+LINKS:
+blog
+product_alpha
+product_beta
