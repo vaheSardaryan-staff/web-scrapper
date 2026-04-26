@@ -22,15 +22,19 @@ from collections import deque
 from src.graph import DirectedGraph
 
 
-def parse_page(filepath: str) -> tuple[str, str, list[str]]:
+def parse_page(filepath: str) -> tuple[str, str, list[tuple[str, float]]]:
     """
     Parse a page text file.
+
+    Link lines may be either:
+        page_name           → weight defaults to 1.0
+        page_name  2.5      → explicit weight
 
     Returns
     -------
     title       : str
     description : str
-    links       : list[str]   — names of linked pages (no extension)
+    links       : list[tuple[str, float]]  — (page_name, weight)
     """
     title, description, links = "Unknown", "", []
     in_links_section = False
@@ -47,7 +51,10 @@ def parse_page(filepath: str) -> tuple[str, str, list[str]]:
             elif line == "LINKS:":
                 in_links_section = True
             elif in_links_section:
-                links.append(line)
+                parts = line.split()
+                name = parts[0]
+                weight = float(parts[1]) if len(parts) >= 2 else 1.0
+                links.append((name, weight))
 
     return title, description, links
 
@@ -116,8 +123,8 @@ class WebCrawler:
                 title, desc, links = parse_page(filepath)
                 self.page_metadata[page] = {"title": title, "description": desc}
 
-                for link in links:
-                    self.graph.add_edge(page, link)   # always add edge
+                for link, weight in links:
+                    self.graph.add_edge(page, link, weight=weight)
 
                     if link not in visited:
                         visited.add(link)

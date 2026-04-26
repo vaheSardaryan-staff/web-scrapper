@@ -1,7 +1,7 @@
 TITLE: Product Alpha
 DESCRIPTION: Our flagship product.
 LINKS:
-products
-pricing
-blog_post1
-product_beta
+products 1.0
+pricing 1.0
+blog_post1 2.0
+product_beta 1.0

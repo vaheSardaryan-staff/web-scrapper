@@ -1,5 +1,5 @@
 TITLE: Contact
 DESCRIPTION: Get in touch with us.
 LINKS:
-home
-about
+home 2.0
+about 2.0

@@ -27,7 +27,7 @@ class TestParsePageFunction(unittest.TestCase):
         title, desc, links = parse_page(path)
         self.assertEqual(title, "My Page")
         self.assertEqual(desc, "A test page.")
-        self.assertEqual(links, ["page_a", "page_b"])
+        self.assertEqual(links, [("page_a", 1.0), ("page_b", 1.0)])
         os.unlink(path)
 
     def test_parse_page_no_links(self):
@@ -40,6 +40,15 @@ class TestParsePageFunction(unittest.TestCase):
         title, desc, links = parse_page(path)
         self.assertEqual(title, "Empty Page")
         self.assertEqual(links, [])
+        os.unlink(path)
+
+    def test_parse_page_with_explicit_weights(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+            f.write("TITLE: Weighted\nDESCRIPTION: Has weights.\nLINKS:\npage_a 2.5\npage_b 1.0\n")
+            path = f.name
+
+        _, _, links = parse_page(path)
+        self.assertEqual(links, [("page_a", 2.5), ("page_b", 1.0)])
         os.unlink(path)
 
 

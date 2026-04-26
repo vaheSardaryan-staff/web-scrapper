@@ -21,6 +21,7 @@ class DirectedGraph:
         self._adj  = defaultdict(list)   # forward edges
         self._radj = defaultdict(list)   # reverse edges
         self._nodes = set()
+        self._weights: dict[tuple[str, str], float] = {}  # (src, dst) -> weight
 
     # ------------------------------------------------------------------
     # Mutation
@@ -33,13 +34,14 @@ class DirectedGraph:
         _ = self._adj[node]
         _ = self._radj[node]
 
-    def add_edge(self, src: str, dst: str):
-        """Add a directed edge src -> dst (self-loops are stored but noted)."""
+    def add_edge(self, src: str, dst: str, weight: float = 1.0):
+        """Add a directed edge src -> dst with traversal cost weight."""
         self.add_node(src)
         self.add_node(dst)
         if dst not in self._adj[src]:        # avoid duplicate edges
             self._adj[src].append(dst)
             self._radj[dst].append(src)
+            self._weights[(src, dst)] = weight
 
     # ------------------------------------------------------------------
     # Basic queries
@@ -70,6 +72,14 @@ class DirectedGraph:
     def num_edges(self) -> int:
         return sum(len(nbrs) for nbrs in self._adj.values())
 
+    def get_weight(self, src: str, dst: str) -> float:
+        """Return the weight of edge src -> dst (1.0 if not set)."""
+        return self._weights.get((src, dst), 1.0)
+
+    def weighted_successors(self, node: str) -> list[tuple[str, float]]:
+        """Return (successor, weight) pairs for all outgoing edges."""
+        return [(dst, self._weights.get((node, dst), 1.0)) for dst in self._adj[node]]
+
     def is_dangling(self, node: str) -> bool:
         """A dangling page has no outgoing links."""
         return self.out_degree(node) == 0
@@ -86,13 +96,13 @@ class DirectedGraph:
     # ------------------------------------------------------------------
 
     def reverse(self) -> "DirectedGraph":
-        """Return a new graph with all edges flipped."""
+        """Return a new graph with all edges flipped (weights preserved)."""
         g = DirectedGraph()
         for node in self._nodes:
             g.add_node(node)
         for src in self._nodes:
             for dst in self._adj[src]:
-                g.add_edge(dst, src)
+                g.add_edge(dst, src, weight=self._weights.get((src, dst), 1.0))
         return g
 
     # ------------------------------------------------------------------

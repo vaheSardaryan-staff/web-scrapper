@@ -13,6 +13,8 @@ from src.algorithms import (
     topological_sort,
     find_hubs,
     pagerank,
+    dijkstra,
+    reconstruct_path,
 )
 
 
@@ -197,6 +199,87 @@ class TestPageRank(unittest.TestCase):
         g.add_node("X")
         pr = pagerank(g)
         self.assertAlmostEqual(pr["X"], 1.0, places=5)
+
+
+# ====================================================================
+# Dijkstra's Shortest Path
+# ====================================================================
+
+class TestDijkstra(unittest.TestCase):
+
+    def test_shortest_path_simple_chain(self):
+        # A -1-> B -1-> C   shortest A->C = 2.0
+        g = DirectedGraph()
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=1.0)
+        dist, _ = dijkstra(g, "A")
+        self.assertAlmostEqual(dist["C"], 2.0)
+
+    def test_dijkstra_prefers_cheaper_path(self):
+        # A -10-> C  vs  A -1-> B -1-> C (cost 2)
+        # Dijkstra must choose A->B->C
+        g = DirectedGraph()
+        g.add_edge("A", "C", weight=10.0)
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=1.0)
+        dist, prev = dijkstra(g, "A")
+        self.assertAlmostEqual(dist["C"], 2.0)
+        self.assertEqual(prev["C"], "B")
+
+    def test_source_distance_is_zero(self):
+        g = make_graph([("A", "B"), ("B", "C")])
+        dist, _ = dijkstra(g, "A")
+        self.assertEqual(dist["A"], 0.0)
+
+    def test_unreachable_node_is_infinity(self):
+        # A -> B,  C is isolated
+        g = DirectedGraph()
+        g.add_edge("A", "B")
+        g.add_node("C")
+        dist, _ = dijkstra(g, "A")
+        self.assertEqual(dist["C"], float("inf"))
+
+    def test_reconstruct_path_simple(self):
+        g = DirectedGraph()
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=1.0)
+        _, prev = dijkstra(g, "A")
+        path = reconstruct_path(prev, "A", "C")
+        self.assertEqual(path, ["A", "B", "C"])
+
+    def test_reconstruct_path_source_equals_target(self):
+        g = make_graph([("A", "B")])
+        _, prev = dijkstra(g, "A")
+        path = reconstruct_path(prev, "A", "A")
+        self.assertEqual(path, ["A"])
+
+    def test_reconstruct_path_unreachable_returns_none(self):
+        g = DirectedGraph()
+        g.add_edge("A", "B")
+        g.add_node("C")
+        _, prev = dijkstra(g, "A")
+        path = reconstruct_path(prev, "A", "C")
+        self.assertIsNone(path)
+
+    def test_dijkstra_non_obvious_cheaper_path(self):
+        # Models the home->contact demo:
+        # S -8-> T  (direct, expensive)
+        # S -1-> M1 -1-> M2 -1-> T  (indirect, cost 3)
+        g = DirectedGraph()
+        g.add_edge("S", "T",  weight=8.0)
+        g.add_edge("S", "M1", weight=1.0)
+        g.add_edge("M1", "M2", weight=1.0)
+        g.add_edge("M2", "T",  weight=1.0)
+        dist, prev = dijkstra(g, "S")
+        self.assertAlmostEqual(dist["T"], 3.0)
+        path = reconstruct_path(prev, "S", "T")
+        self.assertEqual(path, ["S", "M1", "M2", "T"])
+
+    def test_weighted_successors_used(self):
+        g = DirectedGraph()
+        g.add_edge("X", "Y", weight=5.0)
+        self.assertEqual(g.weighted_successors("X"), [("Y", 5.0)])
+        self.assertAlmostEqual(g.get_weight("X", "Y"), 5.0)
 
 
 if __name__ == "__main__":

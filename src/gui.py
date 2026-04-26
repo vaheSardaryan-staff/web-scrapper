@@ -27,6 +27,8 @@ from src.algorithms import (
     topological_sort,
     find_hubs,
     pagerank,
+    dijkstra,
+    reconstruct_path,
 )
 
 # ── Colour palette ────────────────────────────────────────────────────
@@ -140,7 +142,7 @@ class App(tk.Tk):
         ).pack(side="left")
 
         tk.Label(
-            hdr, text="BFS · Kosaraju SCC · PageRank · TopoSort",
+            hdr, text="BFS · Kosaraju SCC · PageRank · TopoSort · Dijkstra",
             bg=BG, fg=MUTED, font=("Courier New", 9)
         ).pack(side="right", pady=6)
 
@@ -167,6 +169,7 @@ class App(tk.Tk):
         self._tab_topo(nb)
         self._tab_hubs(nb)
         self._tab_pagerank(nb)
+        self._tab_shortest_path(nb)
         self._tab_complexity(nb)
 
     # ── Status bar ────────────────────────────────────────────────────
@@ -478,7 +481,146 @@ class App(tk.Tk):
             write(t, bar + "\n", color)
 
     # ==================================================================
-    # TAB 7 — COMPLEXITY
+    # TAB 7 — SHORTEST PATH (Dijkstra)
+    # ==================================================================
+
+    def _tab_shortest_path(self, nb):
+        frame = tk.Frame(nb, bg=BG)
+        nb.add(frame, text="  SHORTEST PATH  ")
+
+        ctrl = tk.Frame(frame, bg=BG)
+        ctrl.pack(fill="x", padx=12, pady=10)
+
+        page_names = sorted(
+            f.replace(".txt", "")
+            for f in os.listdir(self.pages_dir)
+            if f.endswith(".txt")
+        )
+
+        tk.Label(ctrl, text="Source:", bg=BG, fg=TEXT, font=MONO).pack(side="left")
+        self._sp_src_var = tk.StringVar(value="home")
+        self._sp_src_cb = ttk.Combobox(
+            ctrl, textvariable=self._sp_src_var,
+            values=page_names, width=16, font=MONO, state="readonly"
+        )
+        self._sp_src_cb.pack(side="left", padx=8)
+
+        tk.Label(ctrl, text="Destination:", bg=BG, fg=TEXT, font=MONO).pack(side="left", padx=(8, 0))
+        self._sp_dst_var = tk.StringVar(value="contact")
+        self._sp_dst_cb = ttk.Combobox(
+            ctrl, textvariable=self._sp_dst_var,
+            values=page_names, width=16, font=MONO, state="readonly"
+        )
+        self._sp_dst_cb.pack(side="left", padx=8)
+
+        tk.Button(
+            ctrl, text="[ FIND PATH ]",
+            bg=ACCENT2, fg=BG, font=("Courier New", 10, "bold"),
+            relief="flat", bd=0, padx=12, pady=4,
+            activebackground=GOOD, cursor="hand2",
+            command=self._run_dijkstra
+        ).pack(side="left", padx=6)
+
+        out_frame = tk.Frame(frame, bg=BG)
+        out_frame.pack(fill="both", expand=True, padx=12)
+        self._sp_text = styled_text(out_frame, height=28)
+        self._sp_text.pack(fill="both", expand=True)
+        sb = ttk.Scrollbar(out_frame, command=self._sp_text.yview)
+        self._sp_text.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+
+        self._show_sp_intro()
+
+    def _show_sp_intro(self):
+        t = self._sp_text
+        clear(t)
+        write(t, "  DIJKSTRA'S SHORTEST PATH\n\n", "title")
+        write(t, "  Algorithm  : Dijkstra with Min-Heap Priority Queue\n", "muted")
+        write(t, "  Complexity : O((V + E) log V)\n\n", "muted")
+        write(t, "  Each link has a traversal cost (weight).\n")
+        write(t, "  Dijkstra finds the path with the minimum total cost,\n")
+        write(t, "  which may differ from the fewest-hops path that BFS finds.\n\n")
+        write(t, "  Select source and destination, then click [ FIND PATH ].\n", "muted")
+
+    def _run_dijkstra(self):
+        if not self.graph:
+            messagebox.showwarning("No Graph", "Run the crawler first.")
+            return
+
+        src = self._sp_src_var.get().strip()
+        dst = self._sp_dst_var.get().strip()
+        if not src or not dst:
+            messagebox.showerror("Error", "Select both source and destination.")
+            return
+
+        dist, prev = dijkstra(self.graph, src)
+        path = reconstruct_path(prev, src, dst)
+
+        t = self._sp_text
+        clear(t)
+        write(t, "  DIJKSTRA'S SHORTEST PATH RESULT\n\n", "title")
+        write(t, "  Source      : ", "muted"); write(t, f"{src}\n", "accent")
+        write(t, "  Destination : ", "muted"); write(t, f"{dst}\n\n", "accent")
+
+        if path is None:
+            write(t, "  No path exists — destination is not reachable from source.\n", "warn")
+            self._set_status(f"Dijkstra: {src} → {dst}  |  unreachable")
+            return
+
+        total = dist[dst]
+
+        write(t, "  ── Shortest Path ─────────────────────────────────────\n\n", "head")
+        write(t, "  " + " → ".join(path) + "\n\n", "accent")
+        write(t, "  Total cost : ", "muted")
+        write(t, f"{total:.2f}\n", "good")
+        write(t, f"  Hops       : {len(path) - 1}\n\n", "muted")
+
+        write(t, "  ── Step-by-step ──────────────────────────────────────\n\n", "head")
+        write(t, f"  {'STEP':<6} {'FROM':<20} {'TO':<20} {'COST':>6}  {'CUMULATIVE':>10}\n", "head")
+        write(t, "  " + "─" * 68 + "\n", "muted")
+
+        cumulative = 0.0
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            w = self.graph.get_weight(u, v)
+            cumulative += w
+            write(t, f"  {i+1:<6} {u:<20} {v:<20} {w:>6.2f}  {cumulative:>10.2f}\n")
+
+        write(t, "\n  ── All reachable pages from source ───────────────────\n\n", "head")
+        write(t, f"  {'PAGE':<22} {'SHORTEST COST':>14}\n", "head")
+        write(t, "  " + "─" * 40 + "\n", "muted")
+        for node in sorted(dist, key=dist.get):
+            d = dist[node]
+            if d == float("inf"):
+                write(t, f"  {node:<22} {'unreachable':>14}\n", "muted")
+            else:
+                color = "accent" if node == dst else ("good" if d < float("inf") else "muted")
+                write(t, f"  {node:<22} {d:>14.2f}\n", color)
+
+        write(t, "\n  ── Why Dijkstra beats BFS for weighted graphs ────────\n\n", "head")
+        write(t, "  BFS finds the fewest-hops path but ignores edge weights.\n")
+        write(t, "  Dijkstra pops the cheapest frontier node from a min-heap,\n")
+        write(t, "  guaranteeing the globally optimal cost path.\n\n")
+        write(t, "  Min-heap push/pop: O(log V)  per operation\n", "muted")
+        write(t, f"  Total: O((V+E) log V) = O(({self.graph.num_nodes()}+{self.graph.num_edges()}) × log {self.graph.num_nodes()})\n", "accent2")
+
+        self._set_status(
+            f"Dijkstra: {src} → {dst}  |  cost {total:.2f}  |  {len(path)-1} hop(s)"
+        )
+
+    def _refresh_shortest_path_tab(self):
+        if not self.graph:
+            return
+        nodes = sorted(self.graph.nodes())
+        self._sp_src_cb["values"] = nodes
+        self._sp_dst_cb["values"] = nodes
+        if self._sp_src_var.get() not in self.graph.nodes():
+            self._sp_src_var.set(nodes[0] if nodes else "")
+        if self._sp_dst_var.get() not in self.graph.nodes():
+            self._sp_dst_var.set(nodes[-1] if nodes else "")
+
+    # ==================================================================
+    # TAB 8 — COMPLEXITY
     # ==================================================================
 
     def _tab_complexity(self, nb):
@@ -514,6 +656,9 @@ class App(tk.Tk):
             ("PageRank (k iters)",
              "O(k·(V+E))", "O(V)",
              "k=10 iterations; each scans all edges."),
+            ("Dijkstra (min-heap)",
+             "O((V+E)logV)", "O(V)",
+             "Min-heap relaxes cheapest frontier first; one pop per node."),
         ]
 
         write(t, f"  {'ALGORITHM':<24} {'TIME':^12} {'SPACE':^8}  EXPLANATION\n", "head")
@@ -546,3 +691,4 @@ class App(tk.Tk):
         self._refresh_topo_tab()
         self._refresh_hubs_tab()
         self._refresh_pr_tab()
+        self._refresh_shortest_path_tab()

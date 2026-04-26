@@ -8,10 +8,12 @@ All graph algorithms used in the Web Crawler & Link Graph Analyzer:
   3. Topological Sort        — on the condensed DAG           O(V + E)
   4. In-degree / Hub Pages   — O(V + E)
   5. PageRank                — simplified power-iteration     O(k * (V + E))
+  6. Dijkstra's Algorithm    — single-source shortest path    O((V + E) log V)
 
 Every function is self-contained and receives a DirectedGraph as input.
 """
 
+import heapq
 from collections import defaultdict, deque
 from src.graph import DirectedGraph
 
@@ -233,3 +235,90 @@ def pagerank(graph: DirectedGraph, damping: float = 0.85, iterations: int = 10) 
         rank = new_rank
 
     return rank
+
+
+# ======================================================================
+# 6. DIJKSTRA'S ALGORITHM — single-source shortest path
+# ======================================================================
+
+def dijkstra(graph: DirectedGraph, source: str) -> tuple[dict[str, float], dict[str, str | None]]:
+    """
+    Dijkstra's single-source shortest-path algorithm.
+
+    Uses a min-heap (priority queue) so we always relax the cheapest
+    known frontier node first, guaranteeing optimal distances even when
+    edge weights differ.
+
+    Algorithm
+    ---------
+    1. Initialise dist[source] = 0, dist[all others] = ∞.
+    2. Push (0, source) onto the min-heap.
+    3. While heap is not empty:
+       a. Pop (d, u) — the cheapest unprocessed node.
+       b. Skip if d > dist[u]  (stale entry from a previous relaxation).
+       c. For each neighbour v with edge weight w:
+          if dist[u] + w < dist[v]:  relax — update dist[v] and prev[v],
+                                      push (dist[v], v) onto the heap.
+    4. Return dist (all shortest distances) and prev (predecessor map).
+
+    Complexity
+    ----------
+    Time  : O((V + E) log V)  — each edge triggers at most one heap push
+    Space : O(V)              — dist and prev arrays
+
+    Parameters
+    ----------
+    graph  : DirectedGraph with edge weights set via add_edge(..., weight=w)
+    source : starting node
+
+    Returns
+    -------
+    dist : {node: shortest_distance}  (∞ means unreachable)
+    prev : {node: predecessor_on_shortest_path}  (None means no predecessor)
+    """
+    nodes = graph.nodes()
+    dist: dict[str, float] = {node: float("inf") for node in nodes}
+    prev: dict[str, str | None] = {node: None for node in nodes}
+
+    if source not in dist:
+        return dist, prev
+
+    dist[source] = 0.0
+    heap: list[tuple[float, str]] = [(0.0, source)]
+
+    while heap:
+        d, u = heapq.heappop(heap)
+        if d > dist[u]:          # stale heap entry — skip
+            continue
+        for v, w in graph.weighted_successors(u):
+            new_dist = dist[u] + w
+            if new_dist < dist[v]:
+                dist[v] = new_dist
+                prev[v] = u
+                heapq.heappush(heap, (new_dist, v))
+
+    return dist, prev
+
+
+def reconstruct_path(
+    prev: dict[str, str | None], source: str, target: str
+) -> list[str] | None:
+    """
+    Walk the predecessor map backwards from target to source.
+
+    Returns the path as a list [source, ..., target], or None if
+    target is unreachable from source.
+    """
+    if target not in prev:
+        return None
+    if prev[target] is None and target != source:
+        return None       # target was never relaxed
+
+    path: list[str] = []
+    node: str | None = target
+    while node is not None:
+        path.append(node)
+        node = prev[node]
+    path.reverse()
+
+    return path if path[0] == source else None

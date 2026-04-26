@@ -1,6 +1,6 @@
 TITLE: Product Beta
 DESCRIPTION: Next-generation solution.
 LINKS:
-products
-pricing
-product_alpha
+products 1.0
+pricing 2.0
+product_alpha 1.0

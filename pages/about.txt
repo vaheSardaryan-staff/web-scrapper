@@ -1,6 +1,6 @@
 TITLE: About Us
 DESCRIPTION: Learn about our company and mission.
 LINKS:
-home
-team
-careers
+home 2.0
+team 1.0
+careers 3.0

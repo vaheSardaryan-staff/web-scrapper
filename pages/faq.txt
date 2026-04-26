@@ -1,6 +1,6 @@
 TITLE: FAQ
 DESCRIPTION: Frequently asked questions.
 LINKS:
-contact
-home
-pricing
+contact 1.0
+home 3.0
+pricing 1.0

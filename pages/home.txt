@@ -1,7 +1,7 @@
 TITLE: Home Page
 DESCRIPTION: The main entry point of the web.
 LINKS:
-about
-blog
-products
-contact
+about 1.0
+blog 3.0
+products 2.0
+contact 8.0

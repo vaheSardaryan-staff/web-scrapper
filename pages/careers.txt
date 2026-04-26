@@ -1,6 +1,6 @@
 TITLE: Careers
 DESCRIPTION: Join our growing team.
 LINKS:
-team
-about
-contact
+team 2.0
+about 3.0
+contact 1.0

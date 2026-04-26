@@ -1,8 +1,8 @@
 TITLE: Pricing
 DESCRIPTION: Plans and pricing information.
 LINKS:
-products
-contact
-home
-faq
-docs
+products 1.0
+contact 1.0
+home 3.0
+faq 1.0
+docs 1.0

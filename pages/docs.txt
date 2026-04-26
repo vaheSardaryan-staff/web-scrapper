@@ -1,7 +1,7 @@
 TITLE: Documentation
 DESCRIPTION: Technical documentation and guides.
 LINKS:
-product_alpha
-product_beta
-blog
-faq
+product_alpha 1.0
+product_beta 1.0
+blog 2.0
+faq 1.0

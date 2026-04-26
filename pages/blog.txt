@@ -1,7 +1,7 @@
 TITLE: Blog
 DESCRIPTION: Our latest articles and updates.
 LINKS:
-home
-blog_post1
-blog_post2
-blog_post3
+home 2.0
+blog_post1 1.0
+blog_post2 1.0
+blog_post3 1.0
