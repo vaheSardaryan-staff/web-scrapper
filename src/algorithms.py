@@ -9,11 +9,14 @@ All graph algorithms used in the Web Crawler & Link Graph Analyzer:
   4. In-degree / Hub Pages   — O(V + E)
   5. PageRank                — simplified power-iteration     O(k * (V + E))
   6. Dijkstra's Algorithm    — single-source shortest path    O((V + E) log V)
+  7. HITS                    — hub & authority scores         O(k * (V + E))
+  8. Floyd-Warshall          — all-pairs shortest path        O(V³)
 
 Every function is self-contained and receives a DirectedGraph as input.
 """
 
 import heapq
+import math
 from collections import defaultdict, deque
 from src.graph import DirectedGraph
 
@@ -322,3 +325,170 @@ def reconstruct_path(
     path.reverse()
 
     return path if path[0] == source else None
+
+
+# ======================================================================
+# 7. HITS — Hyperlink-Induced Topic Search
+# ======================================================================
+
+def hits(graph: DirectedGraph, iterations: int = 20) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    HITS (Hyperlink-Induced Topic Search) — Kleinberg 1999.
+
+    Computes two complementary scores via alternating power iteration:
+
+        authority(u) ← Σ_{v→u} hub(v)   — pointed to by good hubs
+        hub(u)       ← Σ_{u→v} auth(v)  — points to good authorities
+
+    Both vectors are L2-normalised after every iteration so they remain
+    comparable across graphs of different sizes.
+
+    Contrast with PageRank
+    ----------------------
+    PageRank ranks by global importance; HITS separates the roles of
+    "pointer" (hub) and "destination" (authority) — a page can score
+    high on one and low on the other.
+
+    Complexity
+    ----------
+    Time  : O(k * (V + E))  — k iterations, each scans all edges twice
+    Space : O(V)
+
+    Returns
+    -------
+    hub_scores  : {node: hub_score}
+    auth_scores : {node: authority_score}
+    """
+    nodes = graph.nodes()
+    N = len(nodes)
+    if N == 0:
+        return {}, {}
+
+    hub  = {n: 1.0 for n in nodes}
+    auth = {n: 1.0 for n in nodes}
+
+    for _ in range(iterations):
+        # Authority update: how much do good hubs point here?
+        new_auth = {u: sum(hub[v] for v in graph.predecessors(u)) for u in nodes}
+
+        # Hub update: how well does this node point to good authorities?
+        new_hub  = {u: sum(new_auth[v] for v in graph.successors(u)) for u in nodes}
+
+        # L2 normalisation keeps scores in [0, 1]
+        auth_norm = math.sqrt(sum(x * x for x in new_auth.values())) or 1.0
+        hub_norm  = math.sqrt(sum(x * x for x in new_hub.values()))  or 1.0
+
+        auth = {u: new_auth[u] / auth_norm for u in nodes}
+        hub  = {u: new_hub[u]  / hub_norm  for u in nodes}
+
+    return hub, auth
+
+
+# ======================================================================
+# 8. FLOYD-WARSHALL — All-Pairs Shortest Path
+# ======================================================================
+
+def floyd_warshall(
+    graph: DirectedGraph,
+) -> tuple[dict[str, dict[str, float]], dict[str, dict[str, str | None]]]:
+    """
+    Floyd-Warshall all-pairs shortest-path algorithm.
+
+    For every intermediate vertex k (in arbitrary order), attempt to
+    relax every pair (i, j) through k:
+
+        if dist[i][k] + dist[k][j] < dist[i][j]:
+            dist[i][j]     ← dist[i][k] + dist[k][j]
+            next_hop[i][j] ← next_hop[i][k]
+
+    This DP produces optimal distances for ALL pairs in one pass —
+    unlike running Dijkstra V times, which is O(V(V+E) log V).
+
+    Complexity
+    ----------
+    Time  : O(V³)   — three nested loops over all vertices
+    Space : O(V²)   — the full distance and next-hop matrices
+
+    Returns
+    -------
+    dist     : dist[u][v]     = shortest path weight from u to v (∞ = unreachable)
+    next_hop : next_hop[u][v] = first step on the shortest path from u to v
+    """
+    nodes = graph.nodes()
+    if not nodes:
+        return {}, {}
+
+    dist: dict[str, dict[str, float]] = {
+        u: {v: float("inf") for v in nodes} for u in nodes
+    }
+    next_hop: dict[str, dict[str, str | None]] = {
+        u: {v: None for v in nodes} for u in nodes
+    }
+
+    # Base: self = 0, direct edges = edge weight
+    for u in nodes:
+        dist[u][u] = 0.0
+        for v, w in graph.weighted_successors(u):
+            if w < dist[u][v]:
+                dist[u][v] = w
+                next_hop[u][v] = v
+
+    # DP relaxation through every intermediate vertex k
+    for k in nodes:
+        for i in nodes:
+            if dist[i][k] == float("inf"):
+                continue                     # prune: i can't reach k anyway
+            for j in nodes:
+                through_k = dist[i][k] + dist[k][j]
+                if through_k < dist[i][j]:
+                    dist[i][j]     = through_k
+                    next_hop[i][j] = next_hop[i][k]
+
+    return dist, next_hop
+
+
+def graph_diameter(
+    dist: dict[str, dict[str, float]]
+) -> tuple[float, str | None, str | None]:
+    """
+    Graph diameter = the longest finite shortest path.
+
+    Returns (diameter, src, dst) where src→dst is the farthest pair.
+    Returns (0.0, None, None) for empty or single-node graphs.
+    """
+    diameter = 0.0
+    far_src: str | None = None
+    far_dst: str | None = None
+
+    for u, row in dist.items():
+        for v, d in row.items():
+            if 0.0 < d < float("inf") and d > diameter:
+                diameter = d
+                far_src, far_dst = u, v
+
+    return diameter, far_src, far_dst
+
+
+def reconstruct_fw_path(
+    next_hop: dict[str, dict[str, str | None]], src: str, dst: str
+) -> list[str] | None:
+    """
+    Reconstruct a shortest path from the Floyd-Warshall next_hop table.
+    Returns the path as [src, ..., dst], or None if dst is unreachable.
+    """
+    if src not in next_hop or dst not in next_hop.get(src, {}):
+        return None
+    if next_hop[src][dst] is None and src != dst:
+        return None
+
+    path = [src]
+    cur = src
+    while cur != dst:
+        cur = next_hop[cur][dst]
+        if cur is None:
+            return None
+        path.append(cur)
+        if len(path) > len(next_hop) + 1:
+            return None    # cycle guard
+
+    return path

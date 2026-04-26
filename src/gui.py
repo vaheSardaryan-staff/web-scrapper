@@ -31,6 +31,10 @@ from src.algorithms import (
     pagerank,
     dijkstra,
     reconstruct_path,
+    hits,
+    floyd_warshall,
+    graph_diameter,
+    reconstruct_fw_path,
 )
 
 # ── Colour palette ────────────────────────────────────────────────────
@@ -118,10 +122,12 @@ class App(tk.Tk):
     def __init__(self, pages_dir: str):
         super().__init__()
         self.pages_dir = pages_dir
-        self.crawler   = WebCrawler(pages_dir)
-        self.graph     = None
-        self.sccs      = None
-        self.pr        = None
+        self.crawler      = WebCrawler(pages_dir)
+        self.graph        = None
+        self.sccs         = None
+        self.pr           = None
+        self.hits_result  = None   # (hub_scores, auth_scores)
+        self.apsp_result  = None   # (dist_matrix, next_hop_matrix)
 
         self._viz_seed = 42      # seed for spring layout; REDRAW changes this
 
@@ -174,7 +180,9 @@ class App(tk.Tk):
         self._tab_topo(nb)
         self._tab_hubs(nb)
         self._tab_pagerank(nb)
+        self._tab_hits(nb)
         self._tab_shortest_path(nb)
+        self._tab_apsp(nb)
         self._tab_complexity(nb)
 
     # ── Status bar ────────────────────────────────────────────────────
@@ -204,7 +212,7 @@ class App(tk.Tk):
         tk.Label(ctrl, text="Root page:", bg=BG, fg=TEXT,
                  font=MONO).pack(side="left")
 
-        # Populate dropdown from available pages
+        # Root page dropdown
         page_names = sorted(
             f.replace(".txt", "")
             for f in os.listdir(self.pages_dir)
@@ -212,9 +220,28 @@ class App(tk.Tk):
         )
         self._root_var = tk.StringVar(value="home")
         cb = ttk.Combobox(ctrl, textvariable=self._root_var,
-                          values=page_names, width=18,
+                          values=page_names, width=14,
                           font=MONO, state="readonly")
         cb.pack(side="left", padx=8)
+
+        # Crawl mode
+        tk.Label(ctrl, text="Mode:", bg=BG, fg=TEXT, font=MONO).pack(side="left")
+        self._crawl_mode_var = tk.StringVar(value="BFS")
+        mode_cb = ttk.Combobox(ctrl, textvariable=self._crawl_mode_var,
+                               values=["BFS", "Priority"], width=9,
+                               font=MONO, state="readonly")
+        mode_cb.pack(side="left", padx=6)
+
+        # Depth limit (0 = unlimited)
+        tk.Label(ctrl, text="Max depth:", bg=BG, fg=TEXT, font=MONO).pack(side="left", padx=(6, 0))
+        self._depth_var = tk.StringVar(value="0")
+        depth_sb = tk.Spinbox(ctrl, textvariable=self._depth_var,
+                              from_=0, to=20, width=3,
+                              font=MONO, bg=PANEL, fg=ACCENT,
+                              buttonbackground=PANEL, relief="flat")
+        depth_sb.pack(side="left", padx=4)
+        tk.Label(ctrl, text="(0=∞)", bg=BG, fg=MUTED,
+                 font=("Courier New", 8)).pack(side="left")
 
         btn = tk.Button(
             ctrl, text="[ RUN CRAWLER ]",
@@ -223,7 +250,7 @@ class App(tk.Tk):
             activebackground=GOOD, cursor="hand2",
             command=self._run_crawl
         )
-        btn.pack(side="left", padx=6)
+        btn.pack(side="left", padx=8)
 
         # Output
         out_frame = tk.Frame(frame, bg=BG)
@@ -252,28 +279,64 @@ class App(tk.Tk):
         if not root:
             messagebox.showerror("Error", "Please enter a root page name.")
             return
+
+        mode = self._crawl_mode_var.get()
         try:
-            self.graph = self.crawler.crawl(root)
-            self.sccs  = kosaraju_scc(self.graph)
-            self.pr    = pagerank(self.graph)
+            max_d_raw = int(self._depth_var.get())
+        except ValueError:
+            max_d_raw = 0
+        max_depth = None if max_d_raw == 0 else max_d_raw
+
+        try:
+            if mode == "Priority":
+                self.graph = self.crawler.priority_crawl(root)
+            else:
+                self.graph = self.crawler.crawl(root, max_depth=max_depth)
+            self.sccs        = kosaraju_scc(self.graph)
+            self.pr          = pagerank(self.graph)
+            self.hits_result = hits(self.graph)
+            self.apsp_result = floyd_warshall(self.graph)
         except FileNotFoundError as e:
             messagebox.showerror("File Not Found", str(e))
             return
 
         t = self._crawl_text
         clear(t)
-        write(t, "  BFS CRAWL RESULTS\n", "title")
+
+        mode_label = "PRIORITY CRAWL" if mode == "Priority" else "BFS CRAWL"
+        write(t, f"  {mode_label} RESULTS\n", "title")
         write(t, f"  Root         : {root}\n", "accent")
+        write(t, f"  Mode         : ", "muted")
+        write(t, f"{mode}\n", "accent")
+        if mode == "BFS" and max_depth is not None:
+            write(t, f"  Max depth    : {max_depth}\n", "warn")
         write(t, f"  Pages found  : {self.graph.num_nodes()}\n")
         write(t, f"  Total links  : {self.graph.num_edges()}\n\n")
 
-        write(t, "  ── Discovery Order (BFS) ─────────────────────────────\n\n", "head")
-        for step, page in enumerate(self.crawler.crawl_order, 1):
-            meta  = self.crawler.page_metadata.get(page, {})
-            title = meta.get("title", page)
-            write(t, f"  {step:>3}. ")
-            write(t, f"{page:<20}", "accent")
-            write(t, f"  →  {title}\n", "muted")
+        if mode == "Priority":
+            write(t, "  ── Discovery Order (cheapest-first) ──────────────────\n\n", "head")
+            write(t, f"  {'#':>3}  {'PAGE':<20} {'COST':>8}  TITLE\n", "head")
+            write(t, "  " + "─" * 58 + "\n", "muted")
+            for step, page in enumerate(self.crawler.crawl_order, 1):
+                cost  = self.crawler.crawl_costs.get(page, 0.0)
+                meta  = self.crawler.page_metadata.get(page, {})
+                title = meta.get("title", page)
+                write(t, f"  {step:>3}. ")
+                write(t, f"{page:<20}", "accent")
+                write(t, f" {cost:>8.2f}  ")
+                write(t, f"{title}\n", "muted")
+        else:
+            write(t, "  ── Discovery Order (BFS) ─────────────────────────────\n\n", "head")
+            write(t, f"  {'#':>3}  {'PAGE':<20} {'DEPTH':>5}  TITLE\n", "head")
+            write(t, "  " + "─" * 58 + "\n", "muted")
+            for step, page in enumerate(self.crawler.crawl_order, 1):
+                depth = self.crawler.crawl_depth.get(page, "?")
+                meta  = self.crawler.page_metadata.get(page, {})
+                title = meta.get("title", page)
+                write(t, f"  {step:>3}. ")
+                write(t, f"{page:<20}", "accent")
+                write(t, f" {depth:>5}  ")
+                write(t, f"{title}\n", "muted")
 
         write(t, "\n  ── Edge Cases Detected ──────────────────────────────\n\n", "head")
         dangling = self.graph.dangling_nodes()
@@ -283,7 +346,6 @@ class App(tk.Tk):
             write(t, ", ".join(dangling) + "\n")
         else:
             write(t, "  No dangling pages found.\n", "good")
-
         if loops:
             write(t, f"  Self-links detected: ", "warn")
             write(t, ", ".join(loops) + "\n")
@@ -291,7 +353,7 @@ class App(tk.Tk):
             write(t, "  No self-links found.\n", "good")
 
         self._set_status(
-            f"Crawl complete — {self.graph.num_nodes()} pages, "
+            f"{mode} crawl complete — {self.graph.num_nodes()} pages, "
             f"{self.graph.num_edges()} edges.  Explore the other tabs."
         )
         self._refresh_all_tabs()
@@ -682,7 +744,66 @@ class App(tk.Tk):
             write(t, bar + "\n", color)
 
     # ==================================================================
-    # TAB 7 — SHORTEST PATH (Dijkstra)
+    # TAB 7 — HITS (Hubs & Authorities)
+    # ==================================================================
+
+    def _tab_hits(self, nb):
+        frame = tk.Frame(nb, bg=BG)
+        nb.add(frame, text="  HITS  ")
+        self._hits_text = styled_text(frame, height=30)
+        self._hits_text.pack(fill="both", expand=True, padx=12, pady=10)
+        write(self._hits_text, "  Run the crawler first.\n", "muted")
+
+    def _refresh_hits_tab(self):
+        if not self.hits_result:
+            return
+        hub_scores, auth_scores = self.hits_result
+        t = self._hits_text
+        clear(t)
+        write(t, "  HITS — Hyperlink-Induced Topic Search\n\n", "title")
+        write(t, "  Algorithm  : Alternating power iteration (Kleinberg 1999)\n", "muted")
+        write(t, "  Complexity : O(k·(V+E))   k = 20 iterations\n\n", "muted")
+        write(t, "  A good HUB       points to many good authorities.\n")
+        write(t, "  A good AUTHORITY is pointed to by many good hubs.\n")
+        write(t, "  These roles are complementary — one page can be\n")
+        write(t, "  a strong hub but a weak authority, and vice versa.\n\n")
+
+        # Side-by-side sorted tables
+        auth_ranked = sorted(auth_scores.items(), key=lambda x: x[1], reverse=True)
+        hub_ranked  = sorted(hub_scores.items(),  key=lambda x: x[1], reverse=True)
+        max_auth = auth_ranked[0][1] if auth_ranked else 1.0
+        max_hub  = hub_ranked[0][1]  if hub_ranked  else 1.0
+
+        write(t, "  ── Authority Scores (best destinations) ──────────────\n\n", "head")
+        write(t, f"  {'RANK':<6} {'PAGE':<22} {'SCORE':>9}  BAR\n", "head")
+        write(t, "  " + "─" * 65 + "\n", "muted")
+        for rank, (page, score) in enumerate(auth_ranked, 1):
+            bar   = "█" * int((score / max(max_auth, 1e-9)) * 28)
+            color = "accent" if rank <= 3 else ("accent2" if rank <= 8 else "muted")
+            write(t, f"  {rank:<6} {page:<22} {score:>9.6f}  ")
+            write(t, bar + "\n", color)
+
+        write(t, "\n  ── Hub Scores (best pointers) ────────────────────────\n\n", "head")
+        write(t, f"  {'RANK':<6} {'PAGE':<22} {'SCORE':>9}  BAR\n", "head")
+        write(t, "  " + "─" * 65 + "\n", "muted")
+        for rank, (page, score) in enumerate(hub_ranked, 1):
+            bar   = "█" * int((score / max(max_hub, 1e-9)) * 28)
+            color = "good" if rank <= 3 else ("accent2" if rank <= 8 else "muted")
+            write(t, f"  {rank:<6} {page:<22} {score:>9.6f}  ")
+            write(t, bar + "\n", color)
+
+        write(t, "\n  ── HITS vs PageRank ──────────────────────────────────\n\n", "head")
+        write(t, "  PageRank assigns one score per page (general importance).\n")
+        write(t, "  HITS separates two roles:\n")
+        write(t, "    Hub       — pages that link OUT to many good pages\n", "accent2")
+        write(t, "    Authority — pages that are linked TO by good hubs\n", "accent")
+        write(t, "  A page can score high on one but low on the other.\n\n")
+        write(t, "  Formula (per iteration, then L2-normalise):\n", "muted")
+        write(t, "    auth(u) = Σ hub(v)   for all v → u\n", "muted")
+        write(t, "    hub(u)  = Σ auth(v)  for all u → v\n", "muted")
+
+    # ==================================================================
+    # TAB 8 — SHORTEST PATH (Dijkstra)
     # ==================================================================
 
     def _tab_shortest_path(self, nb):
@@ -821,7 +942,94 @@ class App(tk.Tk):
             self._sp_dst_var.set(nodes[-1] if nodes else "")
 
     # ==================================================================
-    # TAB 8 — COMPLEXITY
+    # TAB 10 — ALL PAIRS (Floyd-Warshall)
+    # ==================================================================
+
+    def _tab_apsp(self, nb):
+        frame = tk.Frame(nb, bg=BG)
+        nb.add(frame, text="  ALL PAIRS  ")
+        self._apsp_text = styled_text(frame, height=30)
+        self._apsp_text.pack(fill="both", expand=True, padx=12, pady=10)
+        write(self._apsp_text, "  Run the crawler first.\n", "muted")
+
+    def _refresh_apsp_tab(self):
+        if not self.apsp_result:
+            return
+        dist, next_hop = self.apsp_result
+        t = self._apsp_text
+        clear(t)
+        write(t, "  FLOYD-WARSHALL — All-Pairs Shortest Path\n\n", "title")
+        write(t, "  Algorithm  : Floyd-Warshall DP\n", "muted")
+        write(t, "  Complexity : O(V³) time,  O(V²) space\n\n", "muted")
+        write(t, "  For every intermediate vertex k, relax all pairs (i, j):\n")
+        write(t, "    if dist[i][k] + dist[k][j] < dist[i][j]: update\n\n", "muted")
+        write(t,
+              "  Contrast with Dijkstra (run V times): O(V·(V+E)·log V)\n"
+              "  Floyd-Warshall beats that when E ≈ V²  (dense graphs).\n\n")
+
+        nodes = sorted(dist.keys())
+        N     = len(nodes)
+
+        # ── Graph diameter ──────────────────────────────────────────
+        diameter, far_src, far_dst = graph_diameter(dist)
+        write(t, "  ── Graph Diameter ────────────────────────────────────\n\n", "head")
+        if far_src:
+            write(t, f"  Diameter  : ", "muted")
+            write(t, f"{diameter:.2f}\n", "good")
+            write(t, f"  Farthest pair : ", "muted")
+            write(t, f"{far_src}  →  {far_dst}\n", "accent")
+            path = reconstruct_fw_path(next_hop, far_src, far_dst)
+            if path:
+                write(t, f"  Path      : {' → '.join(path)}\n\n", "accent2")
+        else:
+            write(t, "  Graph has no reachable pairs (fully disconnected).\n\n", "warn")
+
+        # ── Top-10 longest shortest paths ───────────────────────────
+        pairs = []
+        for u in nodes:
+            for v in nodes:
+                d = dist[u][v]
+                if 0 < d < float("inf"):
+                    pairs.append((d, u, v))
+        pairs.sort(reverse=True)
+
+        write(t, "  ── Longest Shortest Paths (top 10) ───────────────────\n\n", "head")
+        write(t, f"  {'FROM':<18} {'TO':<18} {'COST':>8}  PATH\n", "head")
+        write(t, "  " + "─" * 72 + "\n", "muted")
+        for d, u, v in pairs[:10]:
+            path = reconstruct_fw_path(next_hop, u, v)
+            path_str = " → ".join(path) if path else "?"
+            write(t, f"  {u:<18} {v:<18} {d:>8.2f}  ")
+            write(t, path_str + "\n", "muted")
+
+        # ── Reachability summary ─────────────────────────────────────
+        reachable  = sum(1 for u in nodes for v in nodes
+                         if u != v and dist[u][v] < float("inf"))
+        total_pairs = N * (N - 1)
+        write(t, f"\n  ── Reachability Summary ──────────────────────────────\n\n", "head")
+        write(t, f"  Nodes         : {N}\n")
+        write(t, f"  Directed pairs: {total_pairs}\n")
+        write(t, f"  Reachable     : ", "muted")
+        write(t, f"{reachable}  ({100*reachable/max(total_pairs,1):.0f}%)\n", "good")
+        write(t, f"  Unreachable   : ", "muted")
+        write(t, f"{total_pairs - reachable}\n\n", "warn" if (total_pairs - reachable) > 0 else "muted")
+
+        # ── Distance matrix (abbreviated) ───────────────────────────
+        write(t, "  ── Distance Matrix (∞ = unreachable) ────────────────\n\n", "head")
+        col_w = max(len(n) for n in nodes) + 2
+        header = "  " + " " * 18 + "".join(f"{n:>{col_w}}" for n in nodes) + "\n"
+        write(t, header, "head")
+        write(t, "  " + "─" * (18 + col_w * N) + "\n", "muted")
+        for u in nodes:
+            row = f"  {u:<18}"
+            for v in nodes:
+                d = dist[u][v]
+                cell = "∞" if d == float("inf") else f"{d:.0f}"
+                row += f"{cell:>{col_w}}"
+            write(t, row + "\n")
+
+    # ==================================================================
+    # TAB 11 — COMPLEXITY
     # ==================================================================
 
     def _tab_complexity(self, nb):
@@ -860,6 +1068,15 @@ class App(tk.Tk):
             ("Dijkstra (min-heap)",
              "O((V+E)logV)", "O(V)",
              "Min-heap relaxes cheapest frontier first; one pop per node."),
+            ("Priority Crawl",
+             "O((V+E)logV)", "O(V)",
+             "Best-first BFS via min-heap; discovers cheapest pages first."),
+            ("HITS (k iters)",
+             "O(k·(V+E))", "O(V)",
+             "Alternating hub/auth updates; L2-normalised each iteration."),
+            ("Floyd-Warshall",
+             "O(V³)", "O(V²)",
+             "DP through all intermediates; fills full V×V distance matrix."),
         ]
 
         write(t, f"  {'ALGORITHM':<24} {'TIME':^12} {'SPACE':^8}  EXPLANATION\n", "head")
@@ -893,4 +1110,6 @@ class App(tk.Tk):
         self._refresh_topo_tab()
         self._refresh_hubs_tab()
         self._refresh_pr_tab()
+        self._refresh_hits_tab()
         self._refresh_shortest_path_tab()
+        self._refresh_apsp_tab()

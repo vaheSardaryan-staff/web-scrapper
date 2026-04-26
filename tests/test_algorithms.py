@@ -15,6 +15,10 @@ from src.algorithms import (
     pagerank,
     dijkstra,
     reconstruct_path,
+    hits,
+    floyd_warshall,
+    graph_diameter,
+    reconstruct_fw_path,
 )
 
 
@@ -280,6 +284,126 @@ class TestDijkstra(unittest.TestCase):
         g.add_edge("X", "Y", weight=5.0)
         self.assertEqual(g.weighted_successors("X"), [("Y", 5.0)])
         self.assertAlmostEqual(g.get_weight("X", "Y"), 5.0)
+
+
+# ====================================================================
+# HITS Algorithm
+# ====================================================================
+
+class TestHITS(unittest.TestCase):
+
+    def test_empty_graph_returns_empty(self):
+        g = DirectedGraph()
+        hub, auth = hits(g)
+        self.assertEqual(hub, {})
+        self.assertEqual(auth, {})
+
+    def test_isolated_node_has_zero_scores(self):
+        g = DirectedGraph()
+        g.add_node("X")
+        hub, auth = hits(g)
+        self.assertAlmostEqual(hub["X"],  0.0, places=5)
+        self.assertAlmostEqual(auth["X"], 0.0, places=5)
+
+    def test_chain_roles_are_distinct(self):
+        # A -> B -> C
+        # A should score high as hub (points to B, which points to auth C)
+        # C should score high as authority (is pointed to by B which is pointed to by A)
+        g = make_graph([("A", "B"), ("B", "C")])
+        hub, auth = hits(g)
+        self.assertGreater(hub["A"],  hub["C"])    # A is a better hub than C
+        self.assertGreater(auth["C"], auth["A"])   # C is a better authority than A
+
+    def test_hub_and_auth_are_l2_normalised(self):
+        g = make_graph([("A", "B"), ("B", "C"), ("C", "A")])
+        hub, auth = hits(g)
+        hub_norm  = sum(v * v for v in hub.values())  ** 0.5
+        auth_norm = sum(v * v for v in auth.values()) ** 0.5
+        self.assertAlmostEqual(hub_norm,  1.0, places=4)
+        self.assertAlmostEqual(auth_norm, 1.0, places=4)
+
+    def test_mutual_link_symmetric(self):
+        # A <-> B — symmetric graph, both should have equal scores
+        g = make_graph([("A", "B"), ("B", "A")])
+        hub, auth = hits(g)
+        self.assertAlmostEqual(hub["A"],  hub["B"],  places=4)
+        self.assertAlmostEqual(auth["A"], auth["B"], places=4)
+
+
+# ====================================================================
+# Floyd-Warshall All-Pairs Shortest Path
+# ====================================================================
+
+class TestFloydWarshall(unittest.TestCase):
+
+    def test_direct_edge_distance(self):
+        g = DirectedGraph()
+        g.add_edge("A", "B", weight=3.0)
+        dist, _ = floyd_warshall(g)
+        self.assertAlmostEqual(dist["A"]["B"], 3.0)
+
+    def test_indirect_path(self):
+        # A -1-> B -2-> C   dist A->C = 3
+        g = DirectedGraph()
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=2.0)
+        dist, _ = floyd_warshall(g)
+        self.assertAlmostEqual(dist["A"]["C"], 3.0)
+
+    def test_shortest_over_direct_edge(self):
+        # A -10-> C  vs  A -1-> B -1-> C
+        g = DirectedGraph()
+        g.add_edge("A", "C", weight=10.0)
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=1.0)
+        dist, _ = floyd_warshall(g)
+        self.assertAlmostEqual(dist["A"]["C"], 2.0)
+
+    def test_unreachable_is_infinity(self):
+        g = DirectedGraph()
+        g.add_edge("A", "B")
+        g.add_node("C")
+        dist, _ = floyd_warshall(g)
+        self.assertEqual(dist["A"]["C"], float("inf"))
+
+    def test_self_distance_is_zero(self):
+        g = make_graph([("A", "B"), ("B", "C")])
+        dist, _ = floyd_warshall(g)
+        for n in g.nodes():
+            self.assertEqual(dist[n][n], 0.0)
+
+    def test_empty_graph(self):
+        g = DirectedGraph()
+        dist, nh = floyd_warshall(g)
+        self.assertEqual(dist, {})
+        self.assertEqual(nh,   {})
+
+    def test_graph_diameter(self):
+        # A -1-> B -2-> C   diameter = 3 (A to C)
+        g = DirectedGraph()
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=2.0)
+        dist, _ = floyd_warshall(g)
+        diam, src, dst = graph_diameter(dist)
+        self.assertAlmostEqual(diam, 3.0)
+        self.assertEqual(src, "A")
+        self.assertEqual(dst, "C")
+
+    def test_reconstruct_fw_path(self):
+        g = DirectedGraph()
+        g.add_edge("A", "B", weight=1.0)
+        g.add_edge("B", "C", weight=1.0)
+        _, nh = floyd_warshall(g)
+        path = reconstruct_fw_path(nh, "A", "C")
+        self.assertEqual(path, ["A", "B", "C"])
+
+    def test_reconstruct_fw_path_unreachable(self):
+        g = DirectedGraph()
+        g.add_edge("A", "B")
+        g.add_node("C")
+        _, nh = floyd_warshall(g)
+        path = reconstruct_fw_path(nh, "A", "C")
+        self.assertIsNone(path)
 
 
 if __name__ == "__main__":
