@@ -16,7 +16,9 @@ Design philosophy: clean monochrome-accent scheme, monospace text for data,
 clear headings, no clutter. Runs on vanilla Tkinter (no third-party GUI deps).
 """
 
+import math
 import os
+import random
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -121,9 +123,11 @@ class App(tk.Tk):
         self.sccs      = None
         self.pr        = None
 
+        self._viz_seed = 42      # seed for spring layout; REDRAW changes this
+
         self.title("🕸  Web Crawler & Link Graph Analyzer")
         self.configure(bg=BG)
-        self.geometry("900x680")
+        self.geometry("960x680")
         self.resizable(True, True)
 
         self._build_header()
@@ -142,7 +146,7 @@ class App(tk.Tk):
         ).pack(side="left")
 
         tk.Label(
-            hdr, text="BFS · Kosaraju SCC · PageRank · TopoSort · Dijkstra",
+            hdr, text="BFS · Kosaraju SCC · PageRank · TopoSort · Dijkstra · Spring Layout",
             bg=BG, fg=MUTED, font=("Courier New", 9)
         ).pack(side="right", pady=6)
 
@@ -165,6 +169,7 @@ class App(tk.Tk):
 
         self._tab_crawl(nb)
         self._tab_graph(nb)
+        self._tab_visualize(nb)
         self._tab_scc(nb)
         self._tab_topo(nb)
         self._tab_hubs(nb)
@@ -327,7 +332,203 @@ class App(tk.Tk):
             write(t, "\n")
 
     # ==================================================================
-    # TAB 3 — SCCs
+    # TAB 3 — VISUALIZE  (force-directed graph drawing)
+    # ==================================================================
+
+    def _tab_visualize(self, nb):
+        frame = tk.Frame(nb, bg=BG)
+        nb.add(frame, text="  VISUALIZE  ")
+
+        ctrl = tk.Frame(frame, bg=BG)
+        ctrl.pack(fill="x", padx=12, pady=(8, 4))
+
+        tk.Label(ctrl,
+                 text="Force-directed spring layout  ·  nodes = pages, arrows = links",
+                 bg=BG, fg=MUTED, font=("Courier New", 8)).pack(side="left")
+
+        tk.Button(
+            ctrl, text="[ REDRAW ]",
+            bg=PANEL, fg=ACCENT, font=("Courier New", 9, "bold"),
+            relief="flat", bd=0, padx=10, pady=3,
+            activebackground=ACCENT, activeforeground=BG,
+            cursor="hand2", command=self._redraw_graph
+        ).pack(side="right")
+
+        self._viz_canvas = tk.Canvas(frame, bg=BG, highlightthickness=0)
+        self._viz_canvas.pack(fill="both", expand=True, padx=12, pady=(0, 10))
+
+        # Redraw whenever the canvas is resized (e.g. window resize)
+        self._viz_canvas.bind("<Configure>", lambda _e: self._draw_graph())
+
+    def _redraw_graph(self):
+        """Pick a new random seed and redraw the layout."""
+        self._viz_seed = random.randint(0, 99_999)
+        self._draw_graph()
+
+    def _spring_layout(self, nodes: list, edges: list, W: float, H: float) -> dict:
+        """
+        Fruchterman-Reingold force-directed layout.
+
+        Repulsive force between every pair: Fr = k²/d
+        Attractive force along each edge:  Fa = d²/k
+        Temperature cools linearly so the layout stabilises.
+
+        Time: O(iterations × (V² + E))   — fast for V ≤ ~200
+        """
+        N = len(nodes)
+        if N == 0:
+            return {}
+        if N == 1:
+            return {nodes[0]: (W / 2, H / 2)}
+
+        rng = random.Random(self._viz_seed)
+        pos = {n: [rng.uniform(W * 0.15, W * 0.85),
+                   rng.uniform(H * 0.15, H * 0.85)]
+               for n in nodes}
+
+        k = 0.80 * math.sqrt(W * H / N)   # optimal inter-node distance
+        edge_set = set(edges)
+
+        for step in range(90):
+            disp = {n: [0.0, 0.0] for n in nodes}
+
+            # Repulsion: all pairs push apart
+            for i, u in enumerate(nodes):
+                for v in nodes[i + 1:]:
+                    dx = pos[u][0] - pos[v][0]
+                    dy = pos[u][1] - pos[v][1]
+                    d = max(math.hypot(dx, dy), 0.01)
+                    fr = k * k / d
+                    disp[u][0] += fr * dx / d;  disp[u][1] += fr * dy / d
+                    disp[v][0] -= fr * dx / d;  disp[v][1] -= fr * dy / d
+
+            # Attraction: edges pull nodes together (treat as undirected)
+            seen: set = set()
+            for u, v in edge_set:
+                key = (min(u, v), max(u, v))
+                if key in seen:
+                    continue
+                seen.add(key)
+                dx = pos[v][0] - pos[u][0]
+                dy = pos[v][1] - pos[u][1]
+                d = max(math.hypot(dx, dy), 0.01)
+                fa = d * d / k
+                disp[u][0] += fa * dx / d;  disp[u][1] += fa * dy / d
+                disp[v][0] -= fa * dx / d;  disp[v][1] -= fa * dy / d
+
+            # Cooling schedule
+            temp = k * max(0.05, 1.0 - step / 75)
+            pad  = 55
+            for n in nodes:
+                dx, dy = disp[n]
+                d = max(math.hypot(dx, dy), 0.01)
+                delta = min(d, temp)
+                pos[n][0] = max(pad, min(W - pad, pos[n][0] + delta * dx / d))
+                pos[n][1] = max(pad, min(H - pad, pos[n][1] + delta * dy / d))
+
+        return {n: (pos[n][0], pos[n][1]) for n in nodes}
+
+    def _draw_graph(self):
+        """Compute spring layout and render the graph on the canvas."""
+        canvas = self._viz_canvas
+        W = canvas.winfo_width()
+        H = canvas.winfo_height()
+        if W <= 1 or H <= 1:
+            return       # widget not yet laid out — skip
+
+        canvas.delete("all")
+
+        if not self.graph or self.graph.num_nodes() == 0:
+            canvas.create_text(W // 2, H // 2,
+                                text="Run the crawler first.",
+                                fill=MUTED, font=HEAD)
+            return
+
+        nodes     = list(self.graph.nodes())
+        all_edges = [(s, d) for s in nodes for d in self.graph.successors(s) if s != d]
+        edge_set  = set(all_edges)
+
+        # Node classification
+        in_cycle: set[str] = set()
+        if self.sccs:
+            for scc in self.sccs:
+                if len(scc) > 1:
+                    in_cycle.update(scc)
+        dangling_set = set(self.graph.dangling_nodes())
+
+        pos = self._spring_layout(nodes, all_edges, W, H)
+        R   = 22   # node radius in pixels
+
+        # ── Draw edges ───────────────────────��────────────────────────
+        for src, dst in all_edges:
+            if src not in pos or dst not in pos:
+                continue
+            x1, y1 = pos[src]
+            x2, y2 = pos[dst]
+            dx, dy = x2 - x1, y2 - y1
+            d = max(math.hypot(dx, dy), 0.01)
+
+            # Arrow starts/ends at the circle boundary
+            sx = x1 + R * dx / d
+            sy = y1 + R * dy / d
+            ex = x2 - (R + 4) * dx / d
+            ey = y2 - (R + 4) * dy / d
+
+            # Offset bidirectional edges so they don't overlap
+            if (dst, src) in edge_set:
+                sign  = 1 if src < dst else -1
+                ox    = -dy / d * 7 * sign
+                oy    =  dx / d * 7 * sign
+            else:
+                ox, oy = 0.0, 0.0
+
+            canvas.create_line(
+                sx + ox, sy + oy, ex + ox, ey + oy,
+                fill="#3a3a3a", arrow="last", arrowshape=(9, 11, 3), width=1
+            )
+
+            # Edge weight label at midpoint
+            w  = self.graph.get_weight(src, dst)
+            mx = (sx + ex) / 2 + ox
+            my = (sy + ey) / 2 + oy
+            canvas.create_text(mx, my, text=f"{w:.0f}",
+                               fill="#555555", font=("Courier New", 7))
+
+        # ── Draw nodes (on top of edges) ──────────────────────────────
+        for node in nodes:
+            if node not in pos:
+                continue
+            x, y = pos[node]
+
+            if node in in_cycle:
+                fill_c, ring_c = "#0a2010", GOOD
+            elif node in dangling_set:
+                fill_c, ring_c = "#221400", WARN
+            else:
+                fill_c, ring_c = "#001510", ACCENT
+
+            canvas.create_oval(x - R, y - R, x + R, y + R,
+                               fill=fill_c, outline=ring_c, width=2)
+            canvas.create_text(x, y, text=node,
+                               fill=TEXT, font=("Courier New", 7, "bold"))
+
+        # ── Legend ────────────────────────────────────────────────────
+        legend = [
+            (ACCENT, "regular page"),
+            (WARN,   "dangling (no outlinks)"),
+            (GOOD,   "in a cycle (SCC)"),
+        ]
+        lx = 14
+        ly = H - 14 - len(legend) * 20
+        for i, (color, label) in enumerate(legend):
+            y = ly + i * 20
+            canvas.create_oval(lx, y, lx + 12, y + 12,
+                               fill="#1a1a1a", outline=color, width=2)
+            canvas.create_text(lx + 18, y + 6, text=label,
+                               fill=MUTED, font=("Courier New", 8), anchor="w")
+
+    # ==================================================================
+    # TAB 4 — SCCs  (Kosaraju)
     # ==================================================================
 
     def _tab_scc(self, nb):
@@ -687,6 +888,7 @@ class App(tk.Tk):
 
     def _refresh_all_tabs(self):
         self._refresh_graph_tab()
+        self._draw_graph()
         self._refresh_scc_tab()
         self._refresh_topo_tab()
         self._refresh_hubs_tab()
