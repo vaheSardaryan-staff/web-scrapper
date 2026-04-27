@@ -521,7 +521,7 @@ class App(tk.Tk):
         pos = self._spring_layout(nodes, all_edges, W, H)
         R   = 22   # node radius in pixels
 
-        # ── Draw edges ───────────────────────��────────────────────────
+        # ── Draw edges ────────────────────────────────────────────────
         for src, dst in all_edges:
             if src not in pos or dst not in pos:
                 continue
@@ -636,7 +636,7 @@ class App(tk.Tk):
             write(t, "  " + "  ".join(f"{n:<18}" for n in chunk) + "\n", "muted")
 
     # ==================================================================
-    # TAB 4 — TOPO SORT
+    # TAB 5 — TOPO SORT
     # ==================================================================
 
     def _tab_topo(self, nb):
@@ -677,7 +677,7 @@ class App(tk.Tk):
             write(t, "  " + ", ".join(pages) + "\n")
 
     # ==================================================================
-    # TAB 5 — HUBS
+    # TAB 6 — HUBS
     # ==================================================================
 
     def _tab_hubs(self, nb):
@@ -710,7 +710,7 @@ class App(tk.Tk):
             write(t, bar + "\n", color)
 
     # ==================================================================
-    # TAB 6 — PAGERANK
+    # TAB 7 — PAGERANK
     # ==================================================================
 
     def _tab_pagerank(self, nb):
@@ -744,7 +744,7 @@ class App(tk.Tk):
             write(t, bar + "\n", color)
 
     # ==================================================================
-    # TAB 7 — HITS (Hubs & Authorities)
+    # TAB 8 — HITS (Hubs & Authorities)
     # ==================================================================
 
     def _tab_hits(self, nb):
@@ -803,7 +803,7 @@ class App(tk.Tk):
         write(t, "    hub(u)  = Σ auth(v)  for all u → v\n", "muted")
 
     # ==================================================================
-    # TAB 8 — SHORTEST PATH (Dijkstra)
+    # TAB 9 — SHORTEST PATH (Dijkstra)
     # ==================================================================
 
     def _tab_shortest_path(self, nb):
@@ -1095,9 +1095,9 @@ class App(tk.Tk):
 
         write(t, "  OVERALL PIPELINE\n\n", "head")
         write(t, "  The full analysis pipeline runs in  ", "muted")
-        write(t, "O(V + E)", "accent")
-        write(t, "  (dominated by BFS + SCC).\n", "muted")
-        write(t, "  PageRank adds a constant factor of 10,\n  which is negligible for V ≤ 10⁶.\n", "muted")
+        write(t, "O(V³)", "accent")
+        write(t, "  (dominated by Floyd-Warshall all-pairs shortest path).\n", "muted")
+        write(t, "  BFS, SCC, PageRank, and HITS are all O(V + E) or O(k·(V+E));\n  Floyd-Warshall at O(V³) sets the overall bound.\n", "muted")
 
     # ==================================================================
     # Refresh helpers
