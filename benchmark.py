@@ -31,6 +31,9 @@ from src.algorithms import (
     topological_sort,
     find_hubs,
     pagerank,
+    dijkstra,
+    hits,
+    floyd_warshall,
 )
 
 
@@ -235,6 +238,91 @@ def plot_results(results: dict):
     print(f"Saved: {path3}")
 
 
+# ── Superlinear benchmark (Floyd-Warshall, Dijkstra, HITS) ───────────
+#
+# These algorithms grow faster than O(V + E), so we use a smaller size
+# range.  Floyd-Warshall is O(V³) and dominates visibly by V = 200.
+
+SIZES_SUPERLINEAR = [10, 20, 50, 100, 150, 200]
+
+SUPERLINEAR_ALGORITHMS = ["Dijkstra", "HITS (20 iter)", "Floyd-Warshall"]
+
+
+def run_superlinear_benchmarks():
+    results_sl = {name: [] for name in SUPERLINEAR_ALGORITHMS}
+    random.seed(42)
+
+    print(f"\n{'V':>6}  {'E':>8}  ", end="")
+    for name in SUPERLINEAR_ALGORITHMS:
+        print(f"{name:>20}", end="")
+    print()
+    print("-" * 72)
+
+    for V in SIZES_SUPERLINEAR:
+        graph = generate_random_graph(V, EDGES_PER_NODE)
+        E = graph.num_edges()
+        root = "page_0"
+
+        t_dijk = time_function(dijkstra, graph, root, runs=RUNS)
+        results_sl["Dijkstra"].append(t_dijk)
+
+        t_hits = time_function(hits, graph, runs=RUNS)
+        results_sl["HITS (20 iter)"].append(t_hits)
+
+        t_fw = time_function(floyd_warshall, graph, runs=RUNS)
+        results_sl["Floyd-Warshall"].append(t_fw)
+
+        print(f"{V:>6}  {E:>8}  ", end="")
+        for name in SUPERLINEAR_ALGORITHMS:
+            print(f"{results_sl[name][-1]:>18.3f}ms", end="")
+        print()
+
+    return results_sl
+
+
+def plot_superlinear(results_sl: dict):
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    colors_sl = {
+        "Dijkstra":       "#0099ff",
+        "HITS (20 iter)": "#b37feb",
+        "Floyd-Warshall": "#ff6b6b",
+    }
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    for name, times in results_sl.items():
+        ax.plot(SIZES_SUPERLINEAR, times, marker="o", linewidth=2,
+                label=name, color=colors_sl[name])
+
+    # Reference curves anchored to Floyd-Warshall's first measurement
+    fw0 = results_sl["Floyd-Warshall"][0]
+    v0  = SIZES_SUPERLINEAR[0]
+    ref_v1 = [fw0 * (v / v0)    for v in SIZES_SUPERLINEAR]
+    ref_v2 = [fw0 * (v / v0)**2 for v in SIZES_SUPERLINEAR]
+    ref_v3 = [fw0 * (v / v0)**3 for v in SIZES_SUPERLINEAR]
+
+    ax.plot(SIZES_SUPERLINEAR, ref_v1, "--",  color="gray", linewidth=1.2,
+            label="O(V) ref",  alpha=0.6)
+    ax.plot(SIZES_SUPERLINEAR, ref_v2, "-.",  color="gray", linewidth=1.2,
+            label="O(V²) ref", alpha=0.6)
+    ax.plot(SIZES_SUPERLINEAR, ref_v3, ":",   color="gray", linewidth=1.5,
+            label="O(V³) ref", alpha=0.8)
+
+    ax.set_xlabel("Number of Nodes (V)", fontsize=12)
+    ax.set_ylabel("Execution Time (ms)", fontsize=12)
+    ax.set_title("Superlinear Algorithm Scaling — Dijkstra · HITS · Floyd-Warshall",
+                 fontsize=13)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+
+    path = os.path.join(OUTPUT_DIR, "superlinear_scaling.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    print(f"Saved: {path}")
+
+
 # ── Entry point ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -246,5 +334,14 @@ if __name__ == "__main__":
 
     results = run_benchmarks()
     plot_results(results)
+
+    print()
+    print("=" * 90)
+    print("  Superlinear Algorithms (Floyd-Warshall, Dijkstra, HITS)")
+    print(f"  Graph sizes: {SIZES_SUPERLINEAR}  |  Edges per node: {EDGES_PER_NODE}  |  Runs: {RUNS}")
+    print("=" * 90)
+
+    results_sl = run_superlinear_benchmarks()
+    plot_superlinear(results_sl)
 
     print("\nDone. All plots saved to benchmarks/")
