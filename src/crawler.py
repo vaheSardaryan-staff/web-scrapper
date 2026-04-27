@@ -54,7 +54,15 @@ def parse_page(filepath: str) -> tuple[str, str, list[tuple[str, float]]]:
             elif in_links_section:
                 parts = line.split()
                 name = parts[0]
-                weight = float(parts[1]) if len(parts) >= 2 else 1.0
+                if len(parts) >= 2:
+                    try:
+                        weight = float(parts[1])
+                    except ValueError:
+                        print(f"Warning: invalid weight {parts[1]!r} for link "
+                              f"'{name}' in {filepath!r} — defaulting to 1.0")
+                        weight = 1.0
+                else:
+                    weight = 1.0
                 links.append((name, weight))
 
     return title, description, links

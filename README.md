@@ -335,7 +335,7 @@ Computes the in-degree of every node and returns the top-N pages sorted by
 in-degree descending. Pages with the highest in-degree are the most
 linked-to ("hub") pages in the web.
 
-**Complexity:** O(V + E) time, O(V) space.
+**Complexity:** O(V log V) time, O(V) space.
 
 ---
 
@@ -511,7 +511,7 @@ iterative algorithms.
 | Kosaraju SCC | O(V + E) | Two full DFS passes over all nodes and edges. Constructing the reverse graph is also O(V + E). |
 | Graph Condensation | O(V + E) | Mapping each node to its SCC index: O(V). Scanning every edge to build the DAG: O(E). |
 | Kahn's Topo Sort | O(V + E) | Each super-node is enqueued/dequeued once. Each DAG edge is processed once when decrementing in-degrees. |
-| In-Degree / Hubs | O(V + E) | In-degrees are computed by scanning all predecessors. Sorting V nodes: O(V log V), dominated by O(V + E) for typical graphs. |
+| In-Degree / Hubs | O(V log V) | In-degrees are O(1) precomputed lookups; sorting V entries with Python's Timsort dominates at O(V log V). |
 | PageRank (k iters) | O(k × (V + E)) | Each iteration visits every node and traverses every edge to accumulate rank from predecessors. |
 | Dijkstra | O((V + E) log V) | Each edge triggers at most one heap push O(log V); each node is popped once. |
 | HITS (k iters) | O(k × (V + E)) | Each iteration scans all edges twice (authority update + hub update). |
