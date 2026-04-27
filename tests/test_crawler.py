@@ -5,6 +5,7 @@ Run:  python -m pytest tests/
 """
 
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -78,6 +79,9 @@ class TestWebCrawler(unittest.TestCase):
 
         self.crawler = WebCrawler(self.tmpdir)
 
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def test_crawl_finds_all_pages(self):
         graph = self.crawler.crawl("alpha")
         self.assertEqual(graph.num_nodes(), 3)
@@ -120,6 +124,9 @@ class TestCrawlerWithMissingLink(unittest.TestCase):
 
         self.crawler = WebCrawler(self.tmpdir)
 
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def test_missing_link_still_added_as_node(self):
         graph = self.crawler.crawl("page")
         self.assertIn("ghost", graph.nodes())
@@ -153,6 +160,9 @@ class TestDepthLimitedCrawl(unittest.TestCase):
             with open(os.path.join(self.tmpdir, f"{name}.txt"), "w") as f:
                 f.write(content)
         self.crawler = WebCrawler(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_unlimited_crawl_finds_all(self):
         graph = self.crawler.crawl("root")
@@ -207,6 +217,9 @@ class TestPriorityCrawl(unittest.TestCase):
             with open(os.path.join(self.tmpdir, f"{name}.txt"), "w") as f:
                 f.write(content)
         self.crawler = WebCrawler(self.tmpdir)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_priority_crawl_finds_all_pages(self):
         graph = self.crawler.priority_crawl("root")

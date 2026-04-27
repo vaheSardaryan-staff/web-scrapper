@@ -6,7 +6,7 @@ All graph algorithms used in the Web Crawler & Link Graph Analyzer:
   1. DFS                     — iterative, used internally
   2. Kosaraju's Algorithm    — Strongly Connected Components  O(V + E)
   3. Topological Sort        — on the condensed DAG           O(V + E)
-  4. In-degree / Hub Pages   — O(V + E)
+  4. In-degree / Hub Pages   — O(V log V)
   5. PageRank                — simplified power-iteration     O(k * (V + E))
   6. Dijkstra's Algorithm    — single-source shortest path    O((V + E) log V)
   7. HITS                    — hub & authority scores         O(k * (V + E))
@@ -17,7 +17,7 @@ Every function is self-contained and receives a DirectedGraph as input.
 
 import heapq
 import math
-from collections import defaultdict, deque
+from collections import deque
 from src.graph import DirectedGraph
 
 
@@ -175,7 +175,7 @@ def find_hubs(graph: DirectedGraph, top_n: int = 5) -> list[tuple[str, int]]:
     """
     Return the top-N pages by in-degree (most linked-to pages).
 
-    Time  : O(V + E)  — in-degree is computed from the adjacency list
+    Time  : O(V log V)  — in-degrees are O(1) lookups; sorting V nodes dominates
     Space : O(V)
     """
     in_degrees = graph.all_in_degrees()
