@@ -4,13 +4,17 @@ gui.py
 Tkinter GUI for the Web Crawler & Link Graph Analyzer.
 
 Layout (single window, notebook tabs):
-  Tab 1 – Crawl          : choose root, run BFS crawl, see discovery order
-  Tab 2 – Graph Info     : node list, in/out degrees, dangling / self-loops
-  Tab 3 – SCCs           : Kosaraju's result, which pages share a cycle
-  Tab 4 – Topo Sort      : condensation DAG topological order
-  Tab 5 – Hubs           : top pages by in-degree (bar-style display)
-  Tab 6 – PageRank       : ranked table after 10 power-iteration steps
-  Tab 7 – Complexity     : Big-O summary for every algorithm used
+  Tab  1 – Crawl          : choose root, run crawl (BFS / depth-limited / priority)
+  Tab  2 – Graph Info     : node list, in/out degrees, dangling / self-loops
+  Tab  3 – Visualize      : force-directed spring-layout graph drawing
+  Tab  4 – SCCs           : Kosaraju's result, which pages share a cycle
+  Tab  5 – Topo Sort      : condensation DAG topological order
+  Tab  6 – Hubs           : top pages by in-degree (bar-style display)
+  Tab  7 – PageRank       : ranked table after 10 power-iteration steps
+  Tab  8 – HITS           : hub and authority scores per node
+  Tab  9 – Shortest Path  : Dijkstra single-source shortest path
+  Tab 10 – All Pairs      : Floyd-Warshall all-pairs shortest path + diameter
+  Tab 11 – Complexity     : Big-O summary for every algorithm used
 
 Design philosophy: clean monochrome-accent scheme, monospace text for data,
 clear headings, no clutter. Runs on vanilla Tkinter (no third-party GUI deps).

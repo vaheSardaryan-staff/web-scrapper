@@ -218,22 +218,18 @@ def pagerank(graph: DirectedGraph, damping: float = 0.85, iterations: int = 10) 
     for _ in range(iterations):
         new_rank: dict[str, float] = {}
 
-        # Dangling node contribution distributed uniformly
         dangling_sum = sum(rank[n] for n in dangling)
-        dangling_contrib = damping * dangling_sum / N
+        teleport     = (1.0 - damping) / N          # constant per iteration
+        dangling_r   = damping * dangling_sum / N    # rank from sink pages
 
         for node in nodes:
-            # Teleportation
-            base = (1.0 - damping) / N + dangling_contrib
-
-            # Accumulate rank from in-neighbours
-            link_sum = 0.0
+            link_r = 0.0
             for pred in graph.predecessors(node):
                 out_d = graph.out_degree(pred)
                 if out_d > 0:
-                    link_sum += rank[pred] / out_d
+                    link_r += rank[pred] / out_d
 
-            new_rank[node] = base + damping * link_sum
+            new_rank[node] = teleport + dangling_r + damping * link_r
 
         rank = new_rank
 

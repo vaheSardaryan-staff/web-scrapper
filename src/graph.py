@@ -48,7 +48,7 @@ class DirectedGraph:
     # ------------------------------------------------------------------
 
     def nodes(self):
-        return list(self._nodes)
+        return sorted(self._nodes)
 
     def successors(self, node: str):
         return list(self._adj[node])
